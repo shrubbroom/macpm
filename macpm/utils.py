@@ -3,7 +3,7 @@ import glob
 import subprocess
 from subprocess import PIPE
 import psutil
-from parsers import *
+from .parsers import *
 import plistlib
 
 

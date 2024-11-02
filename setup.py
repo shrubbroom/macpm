@@ -4,7 +4,7 @@ long_description = 'Performance monitoring CLI tool for Apple Silicon'
 
 setup(
     name='macpm',
-    version='0.11',
+    version='0.12',
     author='Jinyu Chen',
     author_email='visualcjy@mail.com',
     url='https://github.com/visualcjy/macpm',
@@ -13,9 +13,10 @@ setup(
     long_description_content_type="text/markdown",
     license='MIT',
     packages=find_packages(),
+    package_dir={'macpm':'macpm'},
     entry_points={
             'console_scripts': [
-                'macpm = macpm:main'
+                'macpm = macpm.macpm:main'
             ]
     },
     classifiers=(

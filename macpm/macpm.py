@@ -3,7 +3,7 @@ import argparse
 import humanize
 from collections import deque
 from dashing import VSplit, HSplit, HGauge, HChart, VGauge, HBrailleChart, HBrailleFilledChart
-from utils import *
+from .utils import *
 
 parser = argparse.ArgumentParser(
     description='macpm: Performance monitoring CLI tool for Apple Silicon')
