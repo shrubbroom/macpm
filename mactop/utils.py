@@ -3,7 +3,7 @@ import glob
 import subprocess
 from subprocess import PIPE
 import psutil
-from .parsers import *
+from parsers import *
 import plistlib
 
 
@@ -17,10 +17,12 @@ def parse_powermetrics(path='/tmp/asitop_powermetrics', timecode="0"):
         thermal_pressure = parse_thermal_pressure(powermetrics_parse)
         cpu_metrics_dict = parse_cpu_metrics(powermetrics_parse)
         gpu_metrics_dict = parse_gpu_metrics(powermetrics_parse)
+        disk_metrics_dict = parse_disk_metrics(powermetrics_parse)
+        network_metrics_dict = parse_network_metrics(powermetrics_parse)
         #bandwidth_metrics = parse_bandwidth_metrics(powermetrics_parse)
         bandwidth_metrics = None
         timestamp = powermetrics_parse["timestamp"]
-        return cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, timestamp
+        return cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, disk_metrics_dict, network_metrics_dict, timestamp
     except Exception as e:
         if data:
             if len(data) > 1:
@@ -28,10 +30,12 @@ def parse_powermetrics(path='/tmp/asitop_powermetrics', timecode="0"):
                 thermal_pressure = parse_thermal_pressure(powermetrics_parse)
                 cpu_metrics_dict = parse_cpu_metrics(powermetrics_parse)
                 gpu_metrics_dict = parse_gpu_metrics(powermetrics_parse)
+                disk_metrics_dict = parse_disk_metrics(powermetrics_parse)
+                network_metrics_dict = parse_network_metrics(powermetrics_parse)
                 #bandwidth_metrics = parse_bandwidth_metrics(powermetrics_parse)
                 bandwidth_metrics = None
                 timestamp = powermetrics_parse["timestamp"]
-                return cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, timestamp
+                return cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, disk_metrics_dict, network_metrics_dict, timestamp
         return False
 
 
@@ -47,14 +51,14 @@ def convert_to_GB(value):
 def run_powermetrics_process(timecode, nice=10, interval=1000):
     #ver, *_ = platform.mac_ver()
     #major_ver = int(ver.split(".")[0])
-    for tmpf in glob.glob("/tmp/asitop_powermetrics*"):
-        os.remove(tmpf)
+    #for tmpf in glob.glob("/tmp/asitop_powermetrics*"):
+    #    os.remove(tmpf)
     output_file_flag = "-o"
     command = " ".join([
         "sudo nice -n",
         str(nice),
         "powermetrics",
-        "--samplers cpu_power,gpu_power,thermal",
+        "--samplers cpu_power,gpu_power,thermal,network,disk",
         output_file_flag,
         "/tmp/asitop_powermetrics"+timecode,
         "-f plist",

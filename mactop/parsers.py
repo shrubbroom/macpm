@@ -82,6 +82,10 @@ def parse_cpu_metrics(powermetrics_parse):
     cpu_metric_dict = {}
     # cpu_clusters
     cpu_clusters = cpu_metrics["clusters"]
+    e_total_idle_ratio = 0
+    e_core_count = 0
+    p_total_idle_ratio = 0
+    p_core_count = 0
     for cluster in cpu_clusters:
         name = cluster["name"]
         cpu_metric_dict[name+"_freq_Mhz"] = int(cluster["freq_hz"]/(1e6))
@@ -92,6 +96,15 @@ def parse_cpu_metrics(powermetrics_parse):
             core.append(cpu["cpu"])
             cpu_metric_dict[name + str(cpu["cpu"]) + "_freq_Mhz"] = int(cpu["freq_hz"] / (1e6))
             cpu_metric_dict[name + str(cpu["cpu"]) + "_active"] = int((1 - cpu["idle_ratio"]) * 100)
+            if name[0] == 'E':
+                e_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                e_core_count += 1
+            else:
+                p_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                p_core_count += 1
+    
+    cpu_metric_dict["E-Cluster_active"] = int((1 - e_total_idle_ratio/e_core_count)*100)
+    cpu_metric_dict["P-Cluster_active"] = int((1 - p_total_idle_ratio/p_core_count)*100)
     cpu_metric_dict["e_core"] = e_core
     cpu_metric_dict["p_core"] = p_core
     if "E-Cluster_active" not in cpu_metric_dict:
@@ -138,3 +151,21 @@ def parse_gpu_metrics(powermetrics_parse):
         "active": int((1 - gpu_metrics["idle_ratio"])*100),
     }
     return gpu_metrics_dict
+
+def parse_disk_metrics(powermetrics_parse):
+    disk_metrics = powermetrics_parse["disk"]
+    disk_metrics_dict = {
+        "read_iops": int(disk_metrics["rops_per_s"]),
+        "write_iops": int(disk_metrics["wops_per_s"]),
+        "read_Bps": int(disk_metrics["rbytes_per_s"]),
+        "write_Bps": int(disk_metrics["wbytes_per_s"]),
+    }
+    return disk_metrics_dict
+
+def parse_network_metrics(powermetrics_parse):
+    network_metrics = powermetrics_parse["network"]
+    network_metrics_dict = {
+        "out_Bps": int(network_metrics["obyte_rate"]),
+        "in_Bps": int(network_metrics["ibyte_rate"]),
+    }
+    return network_metrics_dict

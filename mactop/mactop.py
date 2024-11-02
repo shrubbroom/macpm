@@ -1,11 +1,12 @@
 import time
 import argparse
+import humanize
 from collections import deque
-from dashing import VSplit, HSplit, HGauge, HChart, VGauge
-from .utils import *
+from dashing import VSplit, HSplit, HGauge, HChart, VGauge, HBrailleChart, HBrailleFilledChart
+from utils import *
 
 parser = argparse.ArgumentParser(
-    description='asitop: Performance monitoring CLI tool for Apple Silicon')
+    description='mactop: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
                     help='Display interval and sampling interval for powermetrics (seconds)')
 parser.add_argument('--color', type=int, default=2,
@@ -20,11 +21,11 @@ args = parser.parse_args()
 
 
 def main():
-    print("\nASITOP - Performance monitoring CLI tool for Apple Silicon")
-    print("You can update ASITOP by running `pip install asitop --upgrade`")
-    print("Get help at `https://github.com/tlkh/asitop`")
-    print("P.S. You are recommended to run ASITOP with `sudo asitop`\n")
-    print("\n[1/3] Loading ASITOP\n")
+    print("\nmactop - Performance monitoring CLI tool for Apple Silicon")
+    print("You can update mactop by running `pip install mactop --upgrade`")
+    print("Get help at `https://github.com/visualcjy/mactop`")
+    print("P.S. You are recommended to run mactop with `sudo mactop`\n")
+    print("\n[1/3] Loading MACTOP\n")
     print("\033[?25l")
 
     cpu1_gauge = HGauge(title="E-CPU Usage", val=0, color=args.color)
@@ -103,16 +104,42 @@ def main():
         border_color=args.color,
     )
 
+    disk_read_iops_charts = HChart(title="read iops", color=args.color)
+    disk_write_iops_charts = HBrailleFilledChart(title="write iops", color=args.color)
+    disk_read_bps_charts = HChart(title="read Bps", color=args.color)
+    disk_write_bps_charts = HBrailleFilledChart(title="write Bps", color=args.color)
+    network_in_bps_charts = HChart(title="in Bps", color=args.color)
+    network_out_bps_charts = HBrailleFilledChart(title="out Bps", color=args.color)
+    disk_io_charts = HSplit(
+        disk_read_iops_charts,
+        disk_write_iops_charts,
+        disk_read_bps_charts,
+        disk_write_bps_charts,
+        title="Disk IO", 
+        color=args.color,
+        border_color=args.color)
+    
+    network_io_charts = HSplit(
+        network_in_bps_charts,
+        network_out_bps_charts,
+        title="Network IO", 
+        color=args.color,
+        border_color=args.color)
+    
     ui = HSplit(
         processor_split,
         VSplit(
             memory_gauges,
             power_charts,
+            disk_io_charts,
+            network_io_charts,
         )
     ) if args.show_cores else VSplit(
         processor_split,
         memory_gauges,
         power_charts,
+        disk_io_charts,
+        network_io_charts,
     )
 
     usage_gauges = ui.items[0]
@@ -139,6 +166,12 @@ def main():
     cpu_peak_power = 0
     gpu_peak_power = 0
     package_peak_power = 0
+    disk_read_iops_peak = 0
+    disk_write_iops_peak = 0
+    disk_read_bps_peak = 0
+    disk_write_bps_peak = 0
+    network_in_bps_peak = 0
+    network_out_bps_peak = 0
 
     print("\n[2/3] Starting powermetrics process\n")
 
@@ -182,7 +215,7 @@ def main():
                 count += 1
             ready = parse_powermetrics(timecode=timecode)
             if ready:
-                cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, timestamp = ready
+                cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, disk_metrics_dict, network_metrics_dict, timestamp = ready
 
                 if timestamp > last_timestamp:
                     last_timestamp = timestamp
@@ -192,6 +225,12 @@ def main():
                     else:
                         thermal_throttle = "yes"
 
+                    """e_cpu_usage = 0
+                    core_count = 0
+                    for i in cpu_metrics_dict["e_core"]:
+                        e_cpu_usage += cpu_metrics_dict["E-Cluster" + str(i) + "_active"]
+                        core_count += 1
+                    e_cpu_usage = (e_cpu_usage / core_count) if core_count > 0 else  0"""
                     cpu1_gauge.title = "".join([
                         "E-CPU Usage: ",
                         str(cpu_metrics_dict["E-Cluster_active"]),
@@ -201,6 +240,12 @@ def main():
                     ])
                     cpu1_gauge.value = cpu_metrics_dict["E-Cluster_active"]
 
+                    """p_cpu_usage = 0
+                    core_count = 0
+                    for i in cpu_metrics_dict["p_core"]:
+                        p_cpu_usage += cpu_metrics_dict["P-Cluster" + str(i) + "_active"]
+                        core_count += 1
+                    p_cpu_usage = (p_cpu_usage / core_count) if core_count > 0 else  0"""
                     cpu2_gauge.title = "".join([
                         "P-CPU Usage: ",
                         str(cpu_metrics_dict["P-Cluster_active"]),
@@ -398,6 +443,69 @@ def main():
                         "W)"
                     ])
                     gpu_power_chart.append(gpu_power_percent)
+
+                    def format_number(number):
+                        return humanize.naturalsize(number)
+
+                    disk_read_iops = disk_metrics_dict["read_iops"]
+                    if disk_read_iops > disk_read_iops_peak:
+                        disk_read_iops_peak = disk_read_iops
+                    disk_read_iops_charts.title = "Read iops: "+ f'{disk_read_iops} (peak: {disk_read_iops_peak})'
+                    if disk_read_iops_charts.datapoints:
+                        disk_read_iops_rate = int(disk_read_iops / disk_read_iops_peak * 100) 
+                    else:
+                        disk_read_iops_rate = 100
+                    disk_read_iops_charts.append(disk_read_iops_rate)
+
+                    disk_write_iops = disk_metrics_dict["write_iops"]
+                    if disk_write_iops > disk_write_iops_peak:
+                        disk_write_iops_peak = disk_write_iops
+                    disk_write_iops_charts.title = "Write iops: "+ f'{disk_write_iops} (peak: {disk_write_iops_peak})'
+                    if disk_write_iops_charts.datapoints:
+                        disk_write_iops_rate = int(disk_read_iops / disk_write_iops_peak * 100) 
+                    else:
+                        disk_write_iops_rate = 100
+                    disk_write_iops_charts.append(disk_write_iops_rate)
+
+                    disk_read_bps = disk_metrics_dict["read_Bps"]
+                    if disk_read_bps > disk_read_bps_peak:
+                        disk_read_bps_peak = disk_read_bps
+                    disk_read_bps_charts.title = "Read : "+ f'{format_number(disk_read_bps)}/s (peak: {format_number(disk_read_bps_peak)}/s)'
+                    if disk_read_bps_charts.datapoints:
+                        disk_read_bps_rate = int(disk_read_bps / disk_read_bps_peak * 100) 
+                    else:
+                        disk_read_bps_rate = 100
+                    disk_read_bps_charts.append(disk_read_bps_rate)
+
+                    disk_write_bps = disk_metrics_dict["write_Bps"]
+                    if disk_write_bps > disk_write_bps_peak:
+                        disk_write_bps_peak = disk_write_bps
+                    disk_write_bps_charts.title = "Write : "+ f'{format_number(disk_write_bps)}/s (peak: {format_number(disk_write_bps_peak)}/s)'
+                    if disk_write_bps_charts.datapoints:
+                        disk_write_bps_rate = int(disk_write_bps / disk_write_bps_peak * 100) 
+                    else:
+                        disk_write_bps_rate = 100
+                    disk_write_bps_charts.append(disk_write_bps_rate)
+
+                    network_in_bps = network_metrics_dict["in_Bps"]
+                    if network_in_bps > network_in_bps_peak:
+                        network_in_bps_peak = network_in_bps
+                    network_in_bps_charts.title = "in : "+ f'{format_number(network_in_bps)}/s (peak: {format_number(network_in_bps_peak)}/s)'
+                    if network_in_bps_charts.datapoints:
+                        network_in_bps_rate = int(network_in_bps / network_in_bps_peak * 100) 
+                    else:
+                        network_in_bps_rate = 100
+                    network_in_bps_charts.append(network_in_bps_rate)
+
+                    network_out_bps = network_metrics_dict["out_Bps"]
+                    if network_out_bps > network_out_bps_peak:
+                        network_out_bps_peak = network_out_bps
+                    network_out_bps_charts.title = "out : "+ f'{format_number(network_out_bps)}/s (peak: {format_number(network_out_bps_peak)}/s)'
+                    if network_out_bps_charts.datapoints:
+                        network_out_bps_rate = int(network_out_bps / network_out_bps_peak * 100) 
+                    else:
+                        network_out_bps_rate = 100
+                    network_out_bps_charts.append(network_out_bps_rate)
 
                     ui.display()
 

@@ -3,11 +3,11 @@ from setuptools import setup, find_packages
 long_description = 'Performance monitoring CLI tool for Apple Silicon'
 
 setup(
-    name='asitop',
-    version='0.0.22',
-    author='Timothy Liu',
-    author_email='tlkh.xms@gmail.com',
-    url='https://github.com/tlkh/asitop',
+    name='mactop',
+    version='0.1',
+    author='Jinyu Chen',
+    author_email='visualcjy@mail.com',
+    url='https://github.com/visualcjy/mactop',
     description='Performance monitoring CLI tool for Apple Silicon',
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -15,7 +15,7 @@ setup(
     packages=find_packages(),
     entry_points={
             'console_scripts': [
-                'asitop = asitop.asitop:main'
+                'mactop = mactop.mactop:main'
             ]
     },
     classifiers=(
@@ -23,10 +23,11 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: MacOS",
     ),
-    keywords='asitop',
+    keywords='mactop',
     install_requires=[
         "dashing",
         "psutil",
+        "humanize",
     ],
     zip_safe=False
 )
