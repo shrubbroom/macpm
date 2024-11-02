@@ -1,6 +1,6 @@
 # macpm
 
-![PyPI - Downloads]()
+![PyPI - Downloads](https://pypi.org/project/macpm/#files)
 
 Performance monitoring CLI tool for Apple Silicon
 
@@ -13,7 +13,7 @@ pip install macpm
 ## What is `macpm`
 
 forked form https://github.com/tlkh/asitop
-1. fixed problem that "E-CPU Usage" and "P-CPU Usage" always 100%
+1. fixed the problem that "E-CPU Usage" and "P-CPU Usage" always 100%
 2. add "Disk IO" and "Network IO" info
 
 A Python-based `nvtop`-inspired command line tool for Apple Silicon (aka M1) Macs.
