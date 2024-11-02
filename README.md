@@ -1,16 +1,16 @@
-# mactop
+# macpm
 
-![PyPI - Downloads](https://img.shields.io/pypi/dm/mactop)
+![PyPI - Downloads]()
 
 Performance monitoring CLI tool for Apple Silicon
 
-![](images/mactop.png)
+![](images/macpm.png)
 
 ```shell
-pip install mactop
+pip install macpm
 ```
 
-## What is `mactop`
+## What is `macpm`
 
 forked form https://github.com/tlkh/asitop
 1. fixed problem that "E-CPU Usage" and "P-CPU Usage" always 100%
@@ -30,24 +30,24 @@ A Python-based `nvtop`-inspired command line tool for Apple Silicon (aka M1) Mac
   * Chart for CPU/GPU power
   * Peak power, rolling average display
 
-`mactop` uses the built-in [`powermetrics`](https://www.unix.com/man-page/osx/1/powermetrics/) utility on macOS, which allows access to a variety of hardware performance counters. Note that it requires `sudo` to run due to `powermetrics` needing root access to run. `mactop` is lightweight and has minimal performance impact.
+`macpm` uses the built-in [`powermetrics`](https://www.unix.com/man-page/osx/1/powermetrics/) utility on macOS, which allows access to a variety of hardware performance counters. Note that it requires `sudo` to run due to `powermetrics` needing root access to run. `macpm` is lightweight and has minimal performance impact.
 
-**`mactop` only works on Apple Silicon Macs on macOS Monterey!**
+**`macpm` only works on Apple Silicon Macs on macOS Monterey!**
 
 ## Installation and Usage
 
-`mactop` is a Python-based command line tool. You need `pip` to download and install `mactop`. macOS already comes with Python, to install `pip`, you can follow an [online guide](https://phoenixnap.com/kb/install-pip-mac). After you install `mactop` via `pip`, you can use it via the Terminal.
+`macpm` is a Python-based command line tool. You need `pip` to download and install `macpm`. macOS already comes with Python, to install `pip`, you can follow an [online guide](https://phoenixnap.com/kb/install-pip-mac). After you install `macpm` via `pip`, you can use it via the Terminal.
 
 ```shell
 # to enter password before start
 # this mode is recommended!
-sudo mactop
+sudo macpm
 
 # it will prompt password on start
-mactop
+macpm
 
 # advanced options
-mactop [-h] [--interval INTERVAL] [--color COLOR] [--avg AVG]
+macpm [-h] [--interval INTERVAL] [--color COLOR] [--avg AVG]
 optional arguments:
   -h, --help           show this help message and exit
   --interval INTERVAL  Display interval and sampling interval for powermetrics (seconds)

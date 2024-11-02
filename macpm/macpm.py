@@ -6,7 +6,7 @@ from dashing import VSplit, HSplit, HGauge, HChart, VGauge, HBrailleChart, HBrai
 from utils import *
 
 parser = argparse.ArgumentParser(
-    description='mactop: Performance monitoring CLI tool for Apple Silicon')
+    description='macpm: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
                     help='Display interval and sampling interval for powermetrics (seconds)')
 parser.add_argument('--color', type=int, default=2,
@@ -21,11 +21,11 @@ args = parser.parse_args()
 
 
 def main():
-    print("\nmactop - Performance monitoring CLI tool for Apple Silicon")
-    print("You can update mactop by running `pip install mactop --upgrade`")
-    print("Get help at `https://github.com/visualcjy/mactop`")
-    print("P.S. You are recommended to run mactop with `sudo mactop`\n")
-    print("\n[1/3] Loading MACTOP\n")
+    print("\nmacpm - Performance monitoring CLI tool for Apple Silicon")
+    print("You can update macpm by running `pip install macpm --upgrade`")
+    print("Get help at `https://github.com/visualcjy/macpm`")
+    print("P.S. You are recommended to run macpm with `sudo macpm`\n")
+    print("\n[1/3] Loading macpm\n")
     print("\033[?25l")
 
     cpu1_gauge = HGauge(title="E-CPU Usage", val=0, color=args.color)
