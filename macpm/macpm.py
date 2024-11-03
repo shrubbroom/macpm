@@ -158,7 +158,7 @@ def main():
     usage_gauges.title = cpu_title
     cpu_max_power = soc_info_dict["cpu_max_power"]
     gpu_max_power = soc_info_dict["gpu_max_power"]
-    ane_max_power = 8.0
+    ane_max_power = 16.0
     """max_cpu_bw = soc_info_dict["cpu_max_bw"]
     max_gpu_bw = soc_info_dict["gpu_max_bw"]
     max_media_bw = 7.0"""
@@ -285,14 +285,16 @@ def main():
                     ])
                     gpu_gauge.value = gpu_metrics_dict["active"]
 
+                    ane_power_W = cpu_metrics_dict["ane_W"] / args.interval
+                    if ane_power_W > ane_max_power:
+                        ane_max_power = ane_power_W
                     ane_util_percent = int(
-                        cpu_metrics_dict["ane_W"] / args.interval / ane_max_power * 100)
+                        ane_power_W / ane_max_power * 100)
                     ane_gauge.title = "".join([
                         "ANE Usage: ",
                         str(ane_util_percent),
                         "% @ ",
-                        '{0:.1f}'.format(
-                            cpu_metrics_dict["ane_W"] / args.interval),
+                        '{0:.1f}'.format(ane_power_W),
                         " W"
                     ])
                     ane_gauge.value = ane_util_percent
@@ -408,11 +410,13 @@ def main():
                         thermal_throttle,
                     ])
 
-                    cpu_power_percent = int(
-                        cpu_metrics_dict["cpu_W"] / args.interval / cpu_max_power * 100)
                     cpu_power_W = cpu_metrics_dict["cpu_W"] / args.interval
                     if cpu_power_W > cpu_peak_power:
                         cpu_peak_power = cpu_power_W
+                    if cpu_power_W > cpu_max_power:
+                        cpu_max_power = cpu_power_W
+                    cpu_power_percent = int(
+                        cpu_power_W / cpu_max_power * 100)                   
                     avg_cpu_power_list.append(cpu_power_W)
                     avg_cpu_power = get_avg(avg_cpu_power_list)
                     cpu_power_chart.title = "".join([
@@ -426,11 +430,13 @@ def main():
                     ])
                     cpu_power_chart.append(cpu_power_percent)
 
-                    gpu_power_percent = int(
-                        cpu_metrics_dict["gpu_W"] / args.interval / gpu_max_power * 100)
                     gpu_power_W = cpu_metrics_dict["gpu_W"] / args.interval
                     if gpu_power_W > gpu_peak_power:
                         gpu_peak_power = gpu_power_W
+                    if gpu_power_W > gpu_max_power:
+                        gpu_max_power = gpu_power_W
+                    gpu_power_percent = int(
+                        gpu_power_W / gpu_max_power * 100)
                     avg_gpu_power_list.append(gpu_power_W)
                     avg_gpu_power = get_avg(avg_gpu_power_list)
                     gpu_power_chart.title = "".join([
