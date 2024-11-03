@@ -1,6 +1,7 @@
 # macpm
 
-![PyPI - Downloads](https://pypi.org/project/macpm/#files)
+PyPI - Downloads (https://pypi.org/project/macpm/#files)
+or: pip install macpm
 
 Performance monitoring CLI tool for Apple Silicon
 
@@ -15,6 +16,8 @@ pip install macpm
 forked form https://github.com/tlkh/asitop
 1. fixed the problem that "E-CPU Usage" and "P-CPU Usage" always 100%
 2. add "Disk IO" and "Network IO" info
+3. adjust the hard coded max power in CPU/GPU/ANE
+4. change the way to call powermetrics, no temp files in /tmp 
 
 A Python-based `nvtop`-inspired command line tool for Apple Silicon (aka M1) Macs.
 

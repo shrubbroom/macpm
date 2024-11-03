@@ -1,12 +1,15 @@
-import time
 import argparse
 import humanize
 from collections import deque
 from dashing import VSplit, HSplit, HGauge, HChart, VGauge, HBrailleChart, HBrailleFilledChart
-from .utils import *
+import os, time
+import subprocess
+from subprocess import PIPE
+import psutil
+import plistlib
 
 parser = argparse.ArgumentParser(
-    description='macpm: Performance monitoring CLI tool for Apple Silicon')
+    description='macpm v0.13: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
                     help='Display interval and sampling interval for powermetrics (seconds)')
 parser.add_argument('--color', type=int, default=2,
@@ -15,9 +18,313 @@ parser.add_argument('--avg', type=int, default=30,
                     help='Interval for averaged values (seconds)')
 parser.add_argument('--show_cores', type=bool, default=False,
                     help='Choose show cores mode')
-parser.add_argument('--max_count', type=int, default=0,
-                    help='Max show count to restart powermetrics')
+
 args = parser.parse_args()
+
+powermetrics_process = None
+
+def clear_console():
+    command = 'clear'
+    os.system(command)
+
+
+def convert_to_GB(value):
+    return round(value/1024/1024/1024, 1)
+
+
+def get_ram_metrics_dict():
+    ram_metrics = psutil.virtual_memory()
+    swap_metrics = psutil.swap_memory()
+    total_GB = convert_to_GB(ram_metrics.total)
+    free_GB = convert_to_GB(ram_metrics.available)
+    used_GB = convert_to_GB(ram_metrics.total-ram_metrics.available)
+    swap_total_GB = convert_to_GB(swap_metrics.total)
+    swap_used_GB = convert_to_GB(swap_metrics.used)
+    swap_free_GB = convert_to_GB(swap_metrics.total-swap_metrics.used)
+    if swap_total_GB > 0:
+        swap_free_percent = int(100-(swap_free_GB/swap_total_GB*100))
+    else:
+        swap_free_percent = None
+    ram_metrics_dict = {
+        "total_GB": round(total_GB, 1),
+        "free_GB": round(free_GB, 1),
+        "used_GB": round(used_GB, 1),
+        "free_percent": int(100-(ram_metrics.available/ram_metrics.total*100)),
+        "swap_total_GB": swap_total_GB,
+        "swap_used_GB": swap_used_GB,
+        "swap_free_GB": swap_free_GB,
+        "swap_free_percent": swap_free_percent,
+    }
+    return ram_metrics_dict
+
+
+def get_cpu_info():
+    cpu_info = os.popen('sysctl -a | grep machdep.cpu').read()
+    cpu_info_lines = cpu_info.split("\n")
+    data_fields = ["machdep.cpu.brand_string", "machdep.cpu.core_count"]
+    cpu_info_dict = {}
+    for l in cpu_info_lines:
+        for h in data_fields:
+            if h in l:
+                value = l.split(":")[1].strip()
+                cpu_info_dict[h] = value
+    return cpu_info_dict
+
+
+def get_core_counts():
+    cores_info = os.popen('sysctl -a | grep hw.perflevel').read()
+    cores_info_lines = cores_info.split("\n")
+    data_fields = ["hw.perflevel0.logicalcpu", "hw.perflevel1.logicalcpu"]
+    cores_info_dict = {}
+    for l in cores_info_lines:
+        for h in data_fields:
+            if h in l:
+                value = int(l.split(":")[1].strip())
+                cores_info_dict[h] = value
+    return cores_info_dict
+
+
+def get_gpu_cores():
+    try:
+        cores = os.popen(
+            "system_profiler -detailLevel basic SPDisplaysDataType | grep 'Total Number of Cores'").read()
+        cores = int(cores.split(": ")[-1])
+    except:
+        cores = "?"
+    return cores
+
+
+def get_soc_info():
+    cpu_info_dict = get_cpu_info()
+    core_counts_dict = get_core_counts()
+    try:
+        e_core_count = core_counts_dict["hw.perflevel1.logicalcpu"]
+        p_core_count = core_counts_dict["hw.perflevel0.logicalcpu"]
+    except:
+        e_core_count = "?"
+        p_core_count = "?"
+    soc_info = {
+        "name": cpu_info_dict["machdep.cpu.brand_string"],
+        "core_count": int(cpu_info_dict["machdep.cpu.core_count"]),
+        "cpu_max_power": None,
+        "gpu_max_power": None,
+        "cpu_max_bw": None,
+        "gpu_max_bw": None,
+        "e_core_count": e_core_count,
+        "p_core_count": p_core_count,
+        "gpu_core_count": get_gpu_cores()
+    }
+    # TDP (power)
+    if soc_info["name"] == "Apple M1 Max":
+        soc_info["cpu_max_power"] = 30
+        soc_info["gpu_max_power"] = 60
+    elif soc_info["name"] == "Apple M1 Pro":
+        soc_info["cpu_max_power"] = 30
+        soc_info["gpu_max_power"] = 30
+    elif soc_info["name"] == "Apple M1":
+        soc_info["cpu_max_power"] = 20
+        soc_info["gpu_max_power"] = 20
+    elif soc_info["name"] == "Apple M1 Ultra":
+        soc_info["cpu_max_power"] = 60
+        soc_info["gpu_max_power"] = 120
+    elif soc_info["name"] == "Apple M2":
+        soc_info["cpu_max_power"] = 25
+        soc_info["gpu_max_power"] = 15
+    else:
+        soc_info["cpu_max_power"] = 20
+        soc_info["gpu_max_power"] = 20
+    # bandwidth
+    if soc_info["name"] == "Apple M1 Max":
+        soc_info["cpu_max_bw"] = 250
+        soc_info["gpu_max_bw"] = 400
+    elif soc_info["name"] == "Apple M1 Pro":
+        soc_info["cpu_max_bw"] = 200
+        soc_info["gpu_max_bw"] = 200
+    elif soc_info["name"] == "Apple M1":
+        soc_info["cpu_max_bw"] = 70
+        soc_info["gpu_max_bw"] = 70
+    elif soc_info["name"] == "Apple M1 Ultra":
+        soc_info["cpu_max_bw"] = 500
+        soc_info["gpu_max_bw"] = 800
+    elif soc_info["name"] == "Apple M2":
+        soc_info["cpu_max_bw"] = 100
+        soc_info["gpu_max_bw"] = 100
+    else:
+        soc_info["cpu_max_bw"] = 70
+        soc_info["gpu_max_bw"] = 70
+    return soc_info
+
+def parse_thermal_pressure(powermetrics_parse):
+    return powermetrics_parse["thermal_pressure"]
+
+
+def parse_bandwidth_metrics(powermetrics_parse):
+    bandwidth_metrics = powermetrics_parse["bandwidth_counters"]
+    bandwidth_metrics_dict = {}
+    data_fields = ["PCPU0 DCS RD", "PCPU0 DCS WR",
+                   "PCPU1 DCS RD", "PCPU1 DCS WR",
+                   "PCPU2 DCS RD", "PCPU2 DCS WR",
+                   "PCPU3 DCS RD", "PCPU3 DCS WR",
+                   "PCPU DCS RD", "PCPU DCS WR",
+                   "ECPU0 DCS RD", "ECPU0 DCS WR",
+                   "ECPU1 DCS RD", "ECPU1 DCS WR",
+                   "ECPU DCS RD", "ECPU DCS WR",
+                   "GFX DCS RD", "GFX DCS WR",
+                   "ISP DCS RD", "ISP DCS WR",
+                   "STRM CODEC DCS RD", "STRM CODEC DCS WR",
+                   "PRORES DCS RD", "PRORES DCS WR",
+                   "VDEC DCS RD", "VDEC DCS WR",
+                   "VENC0 DCS RD", "VENC0 DCS WR",
+                   "VENC1 DCS RD", "VENC1 DCS WR",
+                   "VENC2 DCS RD", "VENC2 DCS WR",
+                   "VENC3 DCS RD", "VENC3 DCS WR",
+                   "VENC DCS RD", "VENC DCS WR",
+                   "JPG0 DCS RD", "JPG0 DCS WR",
+                   "JPG1 DCS RD", "JPG1 DCS WR",
+                   "JPG2 DCS RD", "JPG2 DCS WR",
+                   "JPG3 DCS RD", "JPG3 DCS WR",
+                   "JPG DCS RD", "JPG DCS WR",
+                   "DCS RD", "DCS WR"]
+    for h in data_fields:
+        bandwidth_metrics_dict[h] = 0
+    for l in bandwidth_metrics:
+        if l["name"] in data_fields:
+            bandwidth_metrics_dict[l["name"]] = l["value"]/(1e9)
+    bandwidth_metrics_dict["PCPU DCS RD"] = bandwidth_metrics_dict["PCPU DCS RD"] + \
+        bandwidth_metrics_dict["PCPU0 DCS RD"] + \
+        bandwidth_metrics_dict["PCPU1 DCS RD"] + \
+        bandwidth_metrics_dict["PCPU2 DCS RD"] + \
+        bandwidth_metrics_dict["PCPU3 DCS RD"]
+    bandwidth_metrics_dict["PCPU DCS WR"] = bandwidth_metrics_dict["PCPU DCS WR"] + \
+        bandwidth_metrics_dict["PCPU0 DCS WR"] + \
+        bandwidth_metrics_dict["PCPU1 DCS WR"] + \
+        bandwidth_metrics_dict["PCPU2 DCS WR"] + \
+        bandwidth_metrics_dict["PCPU3 DCS WR"]
+    bandwidth_metrics_dict["JPG DCS RD"] = bandwidth_metrics_dict["JPG DCS RD"] + \
+        bandwidth_metrics_dict["JPG0 DCS RD"] + \
+        bandwidth_metrics_dict["JPG1 DCS RD"] + \
+        bandwidth_metrics_dict["JPG2 DCS RD"] + \
+        bandwidth_metrics_dict["JPG3 DCS RD"]
+    bandwidth_metrics_dict["JPG DCS WR"] = bandwidth_metrics_dict["JPG DCS WR"] + \
+        bandwidth_metrics_dict["JPG0 DCS WR"] + \
+        bandwidth_metrics_dict["JPG1 DCS WR"] + \
+        bandwidth_metrics_dict["JPG2 DCS WR"] + \
+        bandwidth_metrics_dict["JPG3 DCS WR"]
+    bandwidth_metrics_dict["VENC DCS RD"] = bandwidth_metrics_dict["VENC DCS RD"] + \
+        bandwidth_metrics_dict["VENC0 DCS RD"] + \
+        bandwidth_metrics_dict["VENC1 DCS RD"] + \
+        bandwidth_metrics_dict["VENC2 DCS RD"] + \
+        bandwidth_metrics_dict["VENC3 DCS RD"]
+    bandwidth_metrics_dict["VENC DCS WR"] = bandwidth_metrics_dict["VENC DCS WR"] + \
+        bandwidth_metrics_dict["VENC0 DCS WR"] + \
+        bandwidth_metrics_dict["VENC1 DCS WR"] + \
+        bandwidth_metrics_dict["VENC2 DCS WR"] + \
+        bandwidth_metrics_dict["VENC3 DCS WR"]
+    bandwidth_metrics_dict["MEDIA DCS"] = sum([
+        bandwidth_metrics_dict["ISP DCS RD"], bandwidth_metrics_dict["ISP DCS WR"],
+        bandwidth_metrics_dict["STRM CODEC DCS RD"], bandwidth_metrics_dict["STRM CODEC DCS WR"],
+        bandwidth_metrics_dict["PRORES DCS RD"], bandwidth_metrics_dict["PRORES DCS WR"],
+        bandwidth_metrics_dict["VDEC DCS RD"], bandwidth_metrics_dict["VDEC DCS WR"],
+        bandwidth_metrics_dict["VENC DCS RD"], bandwidth_metrics_dict["VENC DCS WR"],
+        bandwidth_metrics_dict["JPG DCS RD"], bandwidth_metrics_dict["JPG DCS WR"],
+    ])
+    return bandwidth_metrics_dict
+
+
+def parse_cpu_metrics(powermetrics_parse):
+    e_core = []
+    p_core = []
+    cpu_metrics = powermetrics_parse["processor"]
+    cpu_metric_dict = {}
+    # cpu_clusters
+    cpu_clusters = cpu_metrics["clusters"]
+    e_total_idle_ratio = 0
+    e_core_count = 0
+    p_total_idle_ratio = 0
+    p_core_count = 0
+    for cluster in cpu_clusters:
+        name = cluster["name"]
+        cpu_metric_dict[name+"_freq_Mhz"] = int(cluster["freq_hz"]/(1e6))
+        cpu_metric_dict[name+"_active"] = int((1 - cluster["idle_ratio"])*100)
+        for cpu in cluster["cpus"]:
+            name = 'E-Cluster' if name[0] == 'E' else 'P-Cluster'
+            core = e_core if name[0] == 'E' else p_core
+            core.append(cpu["cpu"])
+            cpu_metric_dict[name + str(cpu["cpu"]) + "_freq_Mhz"] = int(cpu["freq_hz"] / (1e6))
+            cpu_metric_dict[name + str(cpu["cpu"]) + "_active"] = int((1 - cpu["idle_ratio"]) * 100)
+            if name[0] == 'E':
+                e_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                e_core_count += 1
+            else:
+                p_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                p_core_count += 1
+    
+    cpu_metric_dict["E-Cluster_active"] = int((1 - e_total_idle_ratio/e_core_count)*100)
+    cpu_metric_dict["P-Cluster_active"] = int((1 - p_total_idle_ratio/p_core_count)*100)
+    cpu_metric_dict["e_core"] = e_core
+    cpu_metric_dict["p_core"] = p_core
+    if "E-Cluster_active" not in cpu_metric_dict:
+        # M1 Ultra
+        cpu_metric_dict["E-Cluster_active"] = int(
+            (cpu_metric_dict["E0-Cluster_active"] + cpu_metric_dict["E1-Cluster_active"])/2)
+    if "E-Cluster_freq_Mhz" not in cpu_metric_dict:
+        # M1 Ultra
+        cpu_metric_dict["E-Cluster_freq_Mhz"] = max(
+            cpu_metric_dict["E0-Cluster_freq_Mhz"], cpu_metric_dict["E1-Cluster_freq_Mhz"])
+    if "P-Cluster_active" not in cpu_metric_dict:
+        if "P2-Cluster_active" in cpu_metric_dict:
+            # M1 Ultra
+            cpu_metric_dict["P-Cluster_active"] = int((cpu_metric_dict["P0-Cluster_active"] + cpu_metric_dict["P1-Cluster_active"] +
+                                                      cpu_metric_dict["P2-Cluster_active"] + cpu_metric_dict["P3-Cluster_active"]) / 4)
+        else:
+            cpu_metric_dict["P-Cluster_active"] = int(
+                (cpu_metric_dict["P0-Cluster_active"] + cpu_metric_dict["P1-Cluster_active"])/2)
+    if "P-Cluster_freq_Mhz" not in cpu_metric_dict:
+        if "P2-Cluster_freq_Mhz" in cpu_metric_dict:
+            # M1 Ultra
+            freqs = [
+                cpu_metric_dict["P0-Cluster_freq_Mhz"],
+                cpu_metric_dict["P1-Cluster_freq_Mhz"],
+                cpu_metric_dict["P2-Cluster_freq_Mhz"],
+                cpu_metric_dict["P3-Cluster_freq_Mhz"]]
+            cpu_metric_dict["P-Cluster_freq_Mhz"] = max(freqs)
+        else:
+            cpu_metric_dict["P-Cluster_freq_Mhz"] = max(
+                cpu_metric_dict["P0-Cluster_freq_Mhz"], cpu_metric_dict["P1-Cluster_freq_Mhz"])
+    # power
+    cpu_metric_dict["ane_W"] = cpu_metrics["ane_energy"]/1000
+    #cpu_metric_dict["dram_W"] = cpu_metrics["dram_energy"]/1000
+    cpu_metric_dict["cpu_W"] = cpu_metrics["cpu_energy"]/1000
+    cpu_metric_dict["gpu_W"] = cpu_metrics["gpu_energy"]/1000
+    cpu_metric_dict["package_W"] = cpu_metrics["combined_power"]/1000
+    return cpu_metric_dict
+
+
+def parse_gpu_metrics(powermetrics_parse):
+    gpu_metrics = powermetrics_parse["gpu"]
+    gpu_metrics_dict = {
+        "freq_MHz": int(gpu_metrics["freq_hz"]),
+        "active": int((1 - gpu_metrics["idle_ratio"])*100),
+    }
+    return gpu_metrics_dict
+
+def parse_disk_metrics(powermetrics_parse):
+    disk_metrics = powermetrics_parse["disk"]
+    disk_metrics_dict = {
+        "read_iops": int(disk_metrics["rops_per_s"]),
+        "write_iops": int(disk_metrics["wops_per_s"]),
+        "read_Bps": int(disk_metrics["rbytes_per_s"]),
+        "write_Bps": int(disk_metrics["wbytes_per_s"]),
+    }
+    return disk_metrics_dict
+
+def parse_network_metrics(powermetrics_parse):
+    network_metrics = powermetrics_parse["network"]
+    network_metrics_dict = {
+        "out_Bps": int(network_metrics["obyte_rate"]),
+        "in_Bps": int(network_metrics["ibyte_rate"]),
+    }
+    return network_metrics_dict
 
 
 def main():
@@ -27,7 +334,7 @@ def main():
     print("P.S. You are recommended to run macpm with `sudo macpm`\n")
     print("\n[1/3] Loading macpm\n")
     print("\033[?25l")
-
+    global powermetrics_process
     cpu1_gauge = HGauge(title="E-CPU Usage", val=0, color=args.color)
     cpu2_gauge = HGauge(title="P-CPU Usage", val=0, color=args.color)
     gpu_gauge = HGauge(title="GPU Usage", val=0, color=args.color)
@@ -177,11 +484,24 @@ def main():
 
     timecode = str(int(time.time()))
 
-    powermetrics_process = run_powermetrics_process(timecode,
-                                                    interval=args.interval * 1000)
+    #powermetrics_process = run_powermetrics_process(timecode,
+    #                                                interval=args.interval * 1000)
+    
+    command = " ".join([
+        "sudo nice -n",
+        str(10),
+        "powermetrics",
+        "--samplers cpu_power,gpu_power,thermal,network,disk",
+        "-f plist",
+        "-i",
+        str(args.interval * 1000)
+    ])
+    process = subprocess.Popen(command.split(" "), stdin=PIPE, stdout=PIPE)
+ 
+    powermetrics_process = process
 
     print("\n[3/3] Waiting for first reading...\n")
-
+    """
     def get_reading(wait=0.1):
         ready = parse_powermetrics(timecode=timecode)
         while not ready:
@@ -191,7 +511,7 @@ def main():
 
     ready = get_reading()
     last_timestamp = ready[-1]
-
+    """
     def get_avg(inlist):
         avg = sum(inlist) / len(inlist)
         return avg
@@ -202,24 +522,28 @@ def main():
 
     clear_console()
 
-    count=0
     try:
+        data = b''
         while True:
-            if args.max_count > 0:
-                if count >= args.max_count:
-                    count = 0
-                    powermetrics_process.terminate()
-                    timecode = str(int(time.time()))
-                    powermetrics_process = run_powermetrics_process(
-                        timecode, interval=args.interval * 1000)
-                count += 1
-            ready = parse_powermetrics(timecode=timecode)
-            if ready:
-                cpu_metrics_dict, gpu_metrics_dict, thermal_pressure, bandwidth_metrics, disk_metrics_dict, network_metrics_dict, timestamp = ready
-
-                if timestamp > last_timestamp:
-                    last_timestamp = timestamp
-
+            output = process.stdout.readline()
+            #output, stderr = process.communicate()
+            if process.poll() is not None:
+                break
+            data = data + output
+            str_output = output.decode()
+            if str_output.startswith('</plist>'):
+                data = data.replace(b'\x00',b'')
+                powermetrics_parse = plistlib.loads(data)
+                thermal_pressure = parse_thermal_pressure(powermetrics_parse)
+                cpu_metrics_dict = parse_cpu_metrics(powermetrics_parse)
+                gpu_metrics_dict = parse_gpu_metrics(powermetrics_parse)
+                disk_metrics_dict = parse_disk_metrics(powermetrics_parse)
+                network_metrics_dict = parse_network_metrics(powermetrics_parse)
+                #bandwidth_metrics = parse_bandwidth_metrics(powermetrics_parse)
+                bandwidth_metrics = None
+                timestamp = powermetrics_parse["timestamp"]
+                data = b''
+                if timestamp :
                     if thermal_pressure == "Nominal":
                         thermal_throttle = "no"
                     else:
@@ -458,7 +782,7 @@ def main():
                         disk_read_iops_peak = disk_read_iops
                     disk_read_iops_charts.title = "Read iops: "+ f'{disk_read_iops} (peak: {disk_read_iops_peak})'
                     if disk_read_iops_charts.datapoints:
-                        disk_read_iops_rate = int(disk_read_iops / disk_read_iops_peak * 100) 
+                        disk_read_iops_rate = int(disk_read_iops / disk_read_iops_peak * 100) if disk_read_iops_peak > 0 else 0
                     else:
                         disk_read_iops_rate = 100
                     disk_read_iops_charts.append(disk_read_iops_rate)
@@ -468,7 +792,7 @@ def main():
                         disk_write_iops_peak = disk_write_iops
                     disk_write_iops_charts.title = "Write iops: "+ f'{disk_write_iops} (peak: {disk_write_iops_peak})'
                     if disk_write_iops_charts.datapoints:
-                        disk_write_iops_rate = int(disk_read_iops / disk_write_iops_peak * 100) 
+                        disk_write_iops_rate = int(disk_read_iops / disk_write_iops_peak * 100) if disk_write_iops_peak > 0 else 0
                     else:
                         disk_write_iops_rate = 100
                     disk_write_iops_charts.append(disk_write_iops_rate)
@@ -478,7 +802,7 @@ def main():
                         disk_read_bps_peak = disk_read_bps
                     disk_read_bps_charts.title = "Read : "+ f'{format_number(disk_read_bps)}/s (peak: {format_number(disk_read_bps_peak)}/s)'
                     if disk_read_bps_charts.datapoints:
-                        disk_read_bps_rate = int(disk_read_bps / disk_read_bps_peak * 100) 
+                        disk_read_bps_rate = int(disk_read_bps / disk_read_bps_peak * 100) if disk_read_bps_peak > 0 else 0
                     else:
                         disk_read_bps_rate = 100
                     disk_read_bps_charts.append(disk_read_bps_rate)
@@ -488,7 +812,7 @@ def main():
                         disk_write_bps_peak = disk_write_bps
                     disk_write_bps_charts.title = "Write : "+ f'{format_number(disk_write_bps)}/s (peak: {format_number(disk_write_bps_peak)}/s)'
                     if disk_write_bps_charts.datapoints:
-                        disk_write_bps_rate = int(disk_write_bps / disk_write_bps_peak * 100) 
+                        disk_write_bps_rate = int(disk_write_bps / disk_write_bps_peak * 100) if disk_write_bps_peak > 0 else 0
                     else:
                         disk_write_bps_rate = 100
                     disk_write_bps_charts.append(disk_write_bps_rate)
@@ -498,7 +822,7 @@ def main():
                         network_in_bps_peak = network_in_bps
                     network_in_bps_charts.title = "in : "+ f'{format_number(network_in_bps)}/s (peak: {format_number(network_in_bps_peak)}/s)'
                     if network_in_bps_charts.datapoints:
-                        network_in_bps_rate = int(network_in_bps / network_in_bps_peak * 100) 
+                        network_in_bps_rate = int(network_in_bps / network_in_bps_peak * 100) if network_in_bps_peak > 0 else 0
                     else:
                         network_in_bps_rate = 100
                     network_in_bps_charts.append(network_in_bps_rate)
@@ -508,24 +832,25 @@ def main():
                         network_out_bps_peak = network_out_bps
                     network_out_bps_charts.title = "out : "+ f'{format_number(network_out_bps)}/s (peak: {format_number(network_out_bps_peak)}/s)'
                     if network_out_bps_charts.datapoints:
-                        network_out_bps_rate = int(network_out_bps / network_out_bps_peak * 100) 
+                        network_out_bps_rate = int(network_out_bps / network_out_bps_peak * 100)  if network_out_bps_peak > 0 else 0
                     else:
                         network_out_bps_rate = 100
                     network_out_bps_charts.append(network_out_bps_rate)
 
                     ui.display()
 
-            time.sleep(args.interval)
+            if str_output == '':
+                time.sleep(0.1)
 
     except KeyboardInterrupt:
         print("Stopping...")
         print("\033[?25h")
 
-    return powermetrics_process
+    return 
 
 
 if __name__ == "__main__":
-    powermetrics_process = main()
+    main()
     try:
         powermetrics_process.terminate()
         print("Successfully terminated powermetrics process")
@@ -533,3 +858,4 @@ if __name__ == "__main__":
         print(e)
         powermetrics_process.terminate()
         print("Successfully terminated powermetrics process")
+
