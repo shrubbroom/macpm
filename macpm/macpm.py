@@ -1,6 +1,7 @@
 import argparse
 import humanize
 from collections import deque
+from blessed import Terminal
 from dashing import VSplit, HSplit, HGauge, HChart, VGauge, HBrailleChart, HBrailleFilledChart
 import os, time
 import subprocess
@@ -8,8 +9,9 @@ from subprocess import PIPE
 import psutil
 import plistlib
 
+version = 'macpm v0.14'
 parser = argparse.ArgumentParser(
-    description='macpm v0.13: Performance monitoring CLI tool for Apple Silicon')
+    description=f'{version}: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
                     help='Display interval and sampling interval for powermetrics (seconds)')
 parser.add_argument('--color', type=int, default=2,
@@ -412,16 +414,16 @@ def main():
     )
 
     disk_read_iops_charts = HChart(title="read iops", color=args.color)
-    disk_write_iops_charts = HBrailleFilledChart(title="write iops", color=args.color)
+    disk_write_iops_charts = HChart(title="write iops", color=args.color)
     disk_read_bps_charts = HChart(title="read Bps", color=args.color)
-    disk_write_bps_charts = HBrailleFilledChart(title="write Bps", color=args.color)
+    disk_write_bps_charts = HChart(title="write Bps", color=args.color)
     network_in_bps_charts = HChart(title="in Bps", color=args.color)
-    network_out_bps_charts = HBrailleFilledChart(title="out Bps", color=args.color)
+    network_out_bps_charts = HChart(title="out Bps", color=args.color)
     disk_io_charts = HSplit(
-        disk_read_iops_charts,
-        disk_write_iops_charts,
-        disk_read_bps_charts,
-        disk_write_bps_charts,
+        VSplit(disk_read_iops_charts,
+        disk_write_iops_charts,),
+        VSplit(disk_read_bps_charts,
+        disk_write_bps_charts,),
         title="Disk IO", 
         color=args.color,
         border_color=args.color)
@@ -448,7 +450,13 @@ def main():
         disk_io_charts,
         network_io_charts,
     )
-
+    """
+    ui.title = "".join([
+        version,
+        "  (Press q or ESC to stop)"
+    ])
+    ui.border_color = args.color
+    """
     usage_gauges = ui.items[0]
     #bw_gauges = memory_gauges.items[1]
 
@@ -482,11 +490,6 @@ def main():
 
     print("\n[2/3] Starting powermetrics process\n")
 
-    timecode = str(int(time.time()))
-
-    #powermetrics_process = run_powermetrics_process(timecode,
-    #                                                interval=args.interval * 1000)
-    
     command = " ".join([
         "sudo nice -n",
         str(10),
@@ -521,7 +524,7 @@ def main():
     avg_gpu_power_list = deque([], maxlen=int(args.avg / args.interval))
 
     clear_console()
-
+    term = Terminal()
     try:
         data = b''
         while True:
@@ -838,6 +841,18 @@ def main():
                     network_out_bps_charts.append(network_out_bps_rate)
 
                     ui.display()
+                    key_cmd = ''
+                    with term.cbreak():
+                        key = term.inkey(timeout=1)
+                        if key:
+                            if key.is_sequence:
+                                if key.name == 'KEY_ESCAPE':
+                                    key_cmd = "quit"
+                            elif key.lower() == 'q':
+                                    key_cmd = "quit"
+                    if key_cmd == "quit":
+                        print("\nStopping...")
+                        break
 
             if str_output == '':
                 time.sleep(0.1)

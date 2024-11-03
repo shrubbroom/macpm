@@ -4,7 +4,7 @@ long_description = 'Performance monitoring CLI tool for Apple Silicon'
 
 setup(
     name='macpm',
-    version='0.13',
+    version='0.14',
     author='Jinyu Chen',
     author_email='visualcjy@mail.com',
     url='https://github.com/visualcjy/macpm',
