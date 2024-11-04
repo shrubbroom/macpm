@@ -3,10 +3,10 @@
 PyPI - Downloads (https://pypi.org/project/macpm/#files)
 or: pip install macpm
 
-Performance monitoring CLI tool for Apple Silicon
+enhanced MAC Performance monitoring CLI tool for Apple Silicon
 
 ![](images/macpm.png)
-
+![](images/macpm.gif)
 ```shell
 pip install macpm
 ```
@@ -18,6 +18,8 @@ forked form https://github.com/tlkh/asitop
 2. add "Disk IO" and "Network IO" info
 3. adjust the hard coded max power in CPU/GPU/ANE
 4. change the way to call powermetrics, no temp files in /tmp 
+5. press ESC or q to quit
+6. press LEFT or RIGHT to switch color, press 1 : default view, 2 : show_core view
 
 A Python-based `nvtop`-inspired command line tool for Apple Silicon (aka M1) Macs.
 
