@@ -5,7 +5,7 @@ or: pip install macpm
 
 enhanced MAC Performance monitoring CLI tool for Apple Silicon
 
-![](images/macpm.png)
+![](images/macpm-v.gif)
 ![](images/macpm.gif)
 ```shell
 pip install macpm
