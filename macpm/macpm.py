@@ -9,7 +9,7 @@ import psutil
 import plistlib
 import curses
 
-version = 'macpm v0.2'
+version = 'macpm v0.21'
 parser = argparse.ArgumentParser(
     description=f'{version}: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
@@ -253,12 +253,13 @@ def parse_cpu_metrics(powermetrics_parse):
             core = e_core if name[0] == 'E' else p_core
             core.append(cpu["cpu"])
             cpu_metric_dict[name + str(cpu["cpu"]) + "_freq_Mhz"] = int(cpu["freq_hz"] / (1e6))
-            cpu_metric_dict[name + str(cpu["cpu"]) + "_active"] = int((1 - cpu["idle_ratio"]) * 100)
+            idle_ratio = cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+            cpu_metric_dict[name + str(cpu["cpu"]) + "_active"] = int((1 - idle_ratio) * 100)           
             if name[0] == 'E':
-                e_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                e_total_idle_ratio += idle_ratio
                 e_core_count += 1
             else:
-                p_total_idle_ratio += cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+                p_total_idle_ratio += idle_ratio
                 p_core_count += 1
     
     cpu_metric_dict["E-Cluster_active"] = int((1 - e_total_idle_ratio/e_core_count)*100)
@@ -340,6 +341,7 @@ class DefaultView():
         self.disk_write_bps_peak = 0
         self.network_in_bps_peak = 0
         self.network_out_bps_peak = 0
+        self.default_cpu_perline = 8
         self.construct(soc_info_dict,args)
         
     def construct(self,soc_info_dict,args):
@@ -351,15 +353,34 @@ class DefaultView():
         self.e_core_count = soc_info_dict["e_core_count"]
         self.e_core_gauges = [VGauge(val=0, color=args.color, border_color=args.color) for _ in range(self.e_core_count)]
         self.p_core_count = soc_info_dict["p_core_count"]
-        self.p_core_gauges = [VGauge(val=0, color=args.color, border_color=args.color) for _ in range(min(self.p_core_count, 8))]
-        self.p_core_split = [HSplit(
-            *self.p_core_gauges,
-        )]
-        if self.p_core_count > 8:
-            self.p_core_gauges_ext = [VGauge(val=0, color=args.color, border_color=args.color) for _ in range(self.p_core_count - 8)]
+        self.max_cpu_perline = self.default_cpu_perline
+        for i in range(int(self.default_cpu_perline/2),self.default_cpu_perline):
+            if self.p_core_count % i == 0:
+                self.max_cpu_perline = i
+                break
+        import math
+        p_core_lines = math.ceil(self.p_core_count / self.max_cpu_perline)
+        self.p_core_gauges = []
+        self.p_core_split = []
+        for i in range(p_core_lines):
+            self.p_core_gauges.append([])
+            self.p_core_gauges[i].extend([VGauge(val=0, color=args.color, border_color=args.color) for _ in range(self.max_cpu_perline if i < p_core_lines - 1 else self.p_core_count - i * self.max_cpu_perline)])
             self.p_core_split.append(HSplit(
-                *self.p_core_gauges_ext,
+                *self.p_core_gauges[i],
             ))
+        if args.show_cores:
+            self.processor_gauges = [self.cpu1_gauge,
+                            HSplit(*self.e_core_gauges),
+                            self.cpu2_gauge,]
+            #for i in range(len(self.p_core_split)):
+            self.processor_gauges.extend(self.p_core_split)
+            self.processor_gauges.extend(self.gpu_ane_gauges)
+        else:
+            self.processor_gauges = [
+                HSplit(self.cpu1_gauge, self.cpu2_gauge),
+                HSplit(*self.gpu_ane_gauges)
+            ]
+        """
         self.processor_gauges = [self.cpu1_gauge,
                             HSplit(*self.e_core_gauges),
                             self.cpu2_gauge,
@@ -369,6 +390,7 @@ class DefaultView():
             HSplit(self.cpu1_gauge, self.cpu2_gauge),
             HSplit(*self.gpu_ane_gauges)
         ]
+        """
         self.processor_split = VSplit(
             *self.processor_gauges,
             title="Processor Utilization",
@@ -515,12 +537,14 @@ class DefaultView():
                 self.e_core_gauges[i].color = args.color
                 self.e_core_gauges[i].border_color = args.color
             for i in range(len(self.p_core_gauges)):
-                self.p_core_gauges[i].color = args.color
-                self.p_core_gauges[i].border_color = args.color
+                for j in range(len(self.p_core_gauges[i])):
+                    self.p_core_gauges[i][j].color = args.color
+                    self.p_core_gauges[i][j].border_color = args.color
+            """
             for i in range(len(self.p_core_gauges_ext)):
                 self.p_core_gauges_ext[i].color = args.color
                 self.p_core_gauges_ext[i].border_color = args.color
-        
+            """
         thermal_pressure = parse_thermal_pressure(powermetrics_parse)
         cpu_metrics_dict = parse_cpu_metrics(powermetrics_parse)
         gpu_metrics_dict = parse_gpu_metrics(powermetrics_parse)
@@ -577,13 +601,14 @@ class DefaultView():
                     core_count += 1
                 core_count = 0
                 for i in cpu_metrics_dict["p_core"]:
-                    core_gauges =self.p_core_gauges if core_count < 8 else self.p_core_gauges_ext
-                    core_gauges[core_count % 8].title = "".join([
+                    #core_gauges =self.p_core_gauges if core_count < 8 else self.p_core_gauges_ext
+                    core_gauges = self.p_core_gauges[int(core_count / self.max_cpu_perline)]
+                    core_gauges[core_count % self.max_cpu_perline].title = "".join([
                         ("Core-" if self.p_core_count < 6 else 'C-') + str(i + 1) + " ",
                         str(cpu_metrics_dict["P-Cluster" + str(i) + "_active"]),
                         "%",
                     ])
-                    core_gauges[core_count % 8].value = cpu_metrics_dict["P-Cluster" + str(i) + "_active"]
+                    core_gauges[core_count % self.max_cpu_perline].value = cpu_metrics_dict["P-Cluster" + str(i) + "_active"]
                     core_count += 1
 
             self.gpu_gauge.title = "".join([
