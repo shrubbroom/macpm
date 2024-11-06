@@ -9,7 +9,7 @@ import psutil
 import plistlib
 import curses
 
-version = 'macpm v0.21'
+version = 'macpm v0.22'
 parser = argparse.ArgumentParser(
     description=f'{version}: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
@@ -858,7 +858,7 @@ def get_avg(inlist):
     avg = sum(inlist) / len(inlist)
     return avg
 
-def main(stdscr):
+def begin(stdscr):
     soc_info_dict = get_soc_info()
     view1 = None
     stdscr.nodelay(True)
@@ -913,15 +913,13 @@ def main(stdscr):
 
     return 
 
-
-if __name__ == "__main__":
+def main():
+    global powermetrics_process
     print(f"\n{version} - enhanced MAC Performance monitoring CLI tool for Apple Silicon")
     print("You can update macpm by running `pip install macpm --upgrade`")
     print("Get help at `https://github.com/visualcjy/macpm`")
     print("P.S. You are recommended to run macpm with `sudo macpm`\n")
     print("\n[1/3] Loading macpm\n")
-    #global powermetrics_process
- 
     print("\n[2/3] Starting powermetrics process\n")
     pause = os.popen("sudo echo").read()
     command = " ".join([
@@ -937,8 +935,13 @@ if __name__ == "__main__":
 
     print("\n[3/3] Waiting for first reading...\n")
     print("\033[?25l")
-    curses.wrapper(main)
+    curses.wrapper(begin)
     print("\033[?25h")
+
+if __name__ == "__main__":
+
+    main()
+ 
     try:
         powermetrics_process.terminate()
         print("Successfully terminated powermetrics process")
