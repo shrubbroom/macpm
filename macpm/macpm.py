@@ -9,7 +9,7 @@ import psutil
 import plistlib
 import curses
 
-version = 'macpm v0.22'
+version = 'macpm v0.24'
 parser = argparse.ArgumentParser(
     description=f'{version}: Performance monitoring CLI tool for Apple Silicon')
 parser.add_argument('--interval', type=int, default=1,
@@ -253,7 +253,11 @@ def parse_cpu_metrics(powermetrics_parse):
             core = e_core if name[0] == 'E' else p_core
             core.append(cpu["cpu"])
             cpu_metric_dict[name + str(cpu["cpu"]) + "_freq_Mhz"] = int(cpu["freq_hz"] / (1e6))
-            idle_ratio = cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
+            #there  is no down_ratio in M1
+            if cluster.get("down_ratio") is None:
+                idle_ratio = cpu["idle_ratio"]
+            else:
+                idle_ratio = cluster["down_ratio"] + (1 - cluster["down_ratio"]) * (cpu["idle_ratio"] + cpu["down_ratio"])
             cpu_metric_dict[name + str(cpu["cpu"]) + "_active"] = int((1 - idle_ratio) * 100)           
             if name[0] == 'E':
                 e_total_idle_ratio += idle_ratio
@@ -312,20 +316,20 @@ def parse_gpu_metrics(powermetrics_parse):
     return gpu_metrics_dict
 
 def parse_disk_metrics(powermetrics_parse):
-    disk_metrics = powermetrics_parse["disk"]
+    disk_metrics = powermetrics_parse.get("disk",{})
     disk_metrics_dict = {
-        "read_iops": int(disk_metrics["rops_per_s"]),
-        "write_iops": int(disk_metrics["wops_per_s"]),
-        "read_Bps": int(disk_metrics["rbytes_per_s"]),
-        "write_Bps": int(disk_metrics["wbytes_per_s"]),
+        "read_iops": int(disk_metrics.get("rops_per_s",0)),
+        "write_iops": int(disk_metrics.get("wops_per_s",0)),
+        "read_Bps": int(disk_metrics.get("rbytes_per_s",0)),
+        "write_Bps": int(disk_metrics.get("wbytes_per_s",0)),
     }
     return disk_metrics_dict
 
 def parse_network_metrics(powermetrics_parse):
-    network_metrics = powermetrics_parse["network"]
+    network_metrics = powermetrics_parse.get("network",{})
     network_metrics_dict = {
-        "out_Bps": int(network_metrics["obyte_rate"]),
-        "in_Bps": int(network_metrics["ibyte_rate"]),
+        "out_Bps": int(network_metrics.get("obyte_rate",0)),
+        "in_Bps": int(network_metrics.get("ibyte_rate",0)),
     }
     return network_metrics_dict
 
@@ -901,6 +905,9 @@ def begin(stdscr):
                             view1.construct(soc_info_dict,args)
                         view = 2
                         clear_console()
+                    elif key == 0x12:
+                        #press ctrl+r to reset max and peak values
+                        view1.__init__(soc_info_dict,args)
                            
                 if view == 1 or view == 2:
                     view1.display(powermetrics_parse,args)

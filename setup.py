@@ -4,12 +4,12 @@ long_description = 'Performance monitoring CLI tool for Apple Silicon'
 
 setup(
     name='macpm',
-    version='0.22',
+    version='0.24',
     author='Jinyu Chen',
     author_email='visualcjy@mail.com',
     url='https://github.com/visualcjy/macpm',
     description='Performance monitoring CLI tool for Apple Silicon',
-    long_description=long_description,
+    long_description=open('README.md').read(),
     long_description_content_type="text/markdown",
     license='MIT',
     packages=find_packages(),
@@ -31,3 +31,9 @@ setup(
     ],
     zip_safe=False
 )
+
+release_notes_0_2_3 = """
+- ix M1 has no "down_ratio" tag problem
+- fix p-core cpu usage。
+"""
+

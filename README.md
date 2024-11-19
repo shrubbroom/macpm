@@ -20,6 +20,8 @@ forked form https://github.com/tlkh/asitop
 4. change the way to call powermetrics, no temp files in /tmp 
 5. press ESC or q to quit
 6. press LEFT or RIGHT to switch color, press 1 : default view, 2 : show_core view
+7. fix M1 has no "down_ratio" tag problem, fix p-core cpu usage
+   press ctrl + r to reset the max and peak record
 
 A Python-based `nvtop`-inspired command line tool for Apple Silicon (aka M1) Macs.
 
